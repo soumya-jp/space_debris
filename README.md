@@ -49,7 +49,6 @@ The dataset contains the following key features:
 ## How to Run
 1. Clone the repository.
 2. Install dependencies: `pip install -r requirements.txt`.
-4. Open `EDA.ipynb` to explore the cleaning and preprocessing pipeline.
 
 ## Contributors
 - Soumya Bhavaraju
