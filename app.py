@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import joblib
 import numpy as np
@@ -7,7 +7,11 @@ from sklearn.preprocessing import StandardScaler
 
 app = FastAPI()
 
-model = joblib.load("opt_randomforest_model.pkl")
+# Load model with error handling
+try:
+    model = joblib.load("opt_randomforest_model.pkl")
+except Exception as e:
+    raise RuntimeError(f"Failed to load model: {e}")
 
 # Input data structure
 class SpaceDebrisInput(BaseModel):
@@ -31,52 +35,32 @@ class SpaceDebrisInput(BaseModel):
     RCS_SIZE_UNKNOWN: int
     MEAN_MOTION_DDOT: float
 
-# Define a function to preprocess input data (no scaling involved)
+# Convert input into a Pandas DataFrame
 def preprocess_input(input_data: SpaceDebrisInput):
-    # Convert input data into a list
-    data_dict = input_data.dict()
+    data_dict = input_data.model_dump()
 
-    # List the features in the correct order, according to your model's training setup
-    feature_values = [
-        data_dict['ECCENTRICITY'],
-        data_dict['LAUNCH_DATE'],  # You may need to convert this to a numeric value (e.g., timestamp)
-        data_dict['RCS_SIZE_LARGE'],
-        data_dict['RCS_SIZE_SMALL'],
-        data_dict['APOAPSIS'],
-        data_dict['SEMIMAJOR_AXIS'],
-        data_dict['MEAN_MOTION'],
-        data_dict['INCLINATION'],
-        data_dict['PERIOD'],
-        data_dict['REV_AT_EPOCH'],
-        data_dict['PERIAPSIS'],
-        data_dict['BSTAR'],
-        data_dict['RCS_SIZE_MEDIUM'],
-        data_dict['MEAN_MOTION_DOT'],
-        data_dict['ARG_OF_PERICENTER'],
-        data_dict['RA_OF_ASC_NODE'],
-        data_dict['MEAN_ANOMALY'],
-        data_dict['RCS_SIZE_UNKNOWN'],
-        data_dict['MEAN_MOTION_DDOT']
-    ]
+    # Convert dictionary to DataFrame with a single row
+    df = pd.DataFrame([data_dict])
 
-    return np.array([feature_values])
+    return df
 
 @app.post("/predict/")
 def predict(input_data: SpaceDebrisInput):
-    preprocessed_data = preprocess_input(input_data)
+    try:
+        preprocessed_data = preprocess_input(input_data)
+        prediction = model.predict(preprocessed_data)
 
-    prediction = model.predict(preprocessed_data)
+        class_mapping = {
+            0: "Debris",
+            1: "Payload",
+            2: "Rocket Body",
+        }
+        predicted_class = class_mapping.get(int(prediction[0]), "Unknown")
 
+        return {"prediction": predicted_class}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
-    class_mapping = {
-        0: "Debris",
-        1: "Payload",
-        2: "Rocket Body",
-    }
-
-    predicted_class = class_mapping.get(int(prediction[0]), "Unknown")
-
-    return {"prediction": predicted_class}
 @app.get("/")
 def read_root():
     return {"message": "Space debris classification model is running!"}
